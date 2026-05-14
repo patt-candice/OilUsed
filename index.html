@@ -1403,7 +1403,7 @@ window.saveEditUsage = async function() {
  */
 function checkSession() {
   const urlParams = new URLSearchParams(window.location.search);
-  APP.resetToken = "<?= resetToken ?>" || urlParams.get('resetToken');
+  APP.resetToken = urlParams.get('resetToken') || '';
   if (APP.resetToken) {
       showLoader(false);
       showAuth();
@@ -2347,10 +2347,33 @@ async function onSaveSetting(e) {
 /**
  * Helpers
  */
-function runGs(fn, ...args) {
-  return new Promise((resolve, reject) => {
-    google.script.run.withSuccessHandler(resolve).withFailureHandler(err => reject(err))[fn](...args);
+/**
+ * Vercel mode: call Google Apps Script through a Vercel Serverless API proxy.
+ * 1) Deploy Code.gs as a Google Apps Script Web App.
+ * 2) Add GAS_WEB_APP_URL in Vercel Environment Variables.
+ * 3) Upload /api/gas.js together with this index.html.
+ */
+const GAS_PROXY_URL = '/api/gas';
+
+async function runGs(fn, ...args) {
+  const res = await fetch(GAS_PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fn, args })
   });
+
+  let payload;
+  try {
+    payload = await res.json();
+  } catch (e) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || 'ไม่สามารถอ่านผลลัพธ์จาก Server ได้');
+  }
+
+  if (!res.ok || !payload.success) {
+    throw new Error(payload.error || payload.message || 'เกิดข้อผิดพลาดจาก Server');
+  }
+  return payload.data;
 }
 
 function showLoader(show) {
